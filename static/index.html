@@ -4,9 +4,180 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Convoy</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: auto; padding: 20px; }
+        #chat-view, #auth-view { border: 1px solid #ccc; padding: 20px; margin-top: 20px; }
+        #messages { height: 400px; overflow-y: scroll; border: 1px solid #eee; padding: 10px; margin-bottom: 10px; }
+        .message { margin-bottom: 10px; }
+        .message strong { color: #007bff; }
+        input { width: calc(100% - 10px); padding: 5px; margin-bottom: 10px; }
+        button { padding: 5px 10px; }
+        #error-zone { color: red; margin-top: 10px; }
+    </style>
 </head>
 <body>
-    <h2>Welcome to Convoy.</h2>
+
+    <h1>Welcome to Convoy</h1>
     <p>Please log in.</p>
+
+    <div id="auth-view">
+        <h2>Login</h2>
+        <div>
+            <label for="username">Username:</label>
+            <input type="text" id="username" placeholder="Enter your username">
+        </div>
+        <div>
+            <label for="password">Password:</label>
+            <input type="password" id="password" placeholder="Enter your password">
+        </div>
+        <button id="login-btn">Login</button>
+    </div>
+
+    <div id="chat-view" style="display:none;">
+        <h2 id="welcome-user"></h2>
+        <div id="messages"></div>
+        <div>
+            <input type="text" id="message-text" placeholder="Type a message...">
+            <button id="send-btn">Send</button>
+        </div>
+        <button id="logout-btn">Logout</button>
+    </div>
+
+    <div id="error-zone"></div>
+
+    <script>
+        const authView = document.getElementById('auth-view');
+        const chatView = document.getElementById('chat-view');
+        const errorZone = document.getElementById('error-zone');
+        
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const loginBtn = document.getElementById('login-btn');
+        
+        const welcomeUser = document.getElementById('welcome-user');
+        const messagesDiv = document.getElementById('messages');
+        const messageTextInput = document.getElementById('message-text');
+        const sendBtn = document.getElementById('send-btn');
+        const logoutBtn = document.getElementById('logout-btn');
+
+        let currentUser = { username: null, token: null };
+        let messageFetcherInterval;
+
+        const API_URL = '/api';
+
+        loginBtn.addEventListener('click', handleLogin);
+        sendBtn.addEventListener('click', handleSendMessage);
+        logoutBtn.addEventListener('click', handleLogout);
+        messageTextInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleSendMessage();
+        });
+        
+        function setError(message = '') {
+            errorZone.textContent = message;
+        }
+        
+        function handleLogin() {
+            setError();
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value.trim();
+
+            if (!username || !password) {
+                setError('Username and password are required.');
+                return;
+            }
+
+            currentUser.username = username;
+            currentUser.token = btoa(`${username}:${password}`); 
+
+            showChatView();
+        }
+
+        function handleLogout() {
+            currentUser.username = null;
+            currentUser.token = null;
+            showAuthView();
+        }
+
+        async function handleSendMessage() {
+            setError();
+            const messageText = messageTextInput.value.trim();
+            if (!messageText) return;
+
+            try {
+                const response = await fetch(`${API_URL}/messages`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Basic ${currentUser.token}`
+                    },
+                    body: JSON.stringify({ message_text: messageText })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        setError('Authentication failed. Please check your username and password.');
+                        handleLogout();
+                    } else {
+                       throw new Error(data.message || 'Failed to send message.');
+                    }
+                } else {
+                    messageTextInput.value = '';
+                    fetchMessages();
+                }
+            } catch (err) {
+                setError(`Send Error: ${err.message}`);
+            }
+        }
+        
+        async function fetchMessages() {
+            if (!currentUser.token) return;
+
+            try {
+                const response = await fetch(`${API_URL}/messages`);
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.message || 'Could not fetch messages.');
+                }
+                
+                const messages = await response.json();
+                renderMessages(messages);
+            } catch (err) {
+                setError(`Fetch Error: ${err.message}`);
+                clearInterval(messageFetcherInterval);
+            }
+        }
+
+        function renderMessages(messages) {
+            messagesDiv.innerHTML = '';
+            messages.reverse().forEach(msg => {
+                const msgEl = document.createElement('div');
+                msgEl.classList.add('message');
+                const formattedDate = new Date(msg.created_at).toLocaleTimeString();
+                msgEl.innerHTML = `<strong>${msg.username}</strong> <small>(${formattedDate})</small>: ${msg.message_text}`;
+                messagesDiv.appendChild(msgEl);
+            });
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        function showChatView() {
+            authView.style.display = 'none';
+            chatView.style.display = 'block';
+            welcomeUser.textContent = `Welcome, ${currentUser.username}!`;
+            fetchMessages();
+            messageFetcherInterval = setInterval(fetchMessages, 3000);
+        }
+
+        function showAuthView() {
+            chatView.style.display = 'none';
+            authView.style.display = 'block';
+            usernameInput.value = '';
+            passwordInput.value = '';
+            if (messageFetcherInterval) {
+                clearInterval(messageFetcherInterval);
+            }
+        }
+    </script>
 </body>
 </html>

@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Convoy</title>
+    <style>
+        body { font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; }
+        div { margin-bottom: 10px; }
+        input { width: calc(100% - 10px); padding: 5px; }
+        button { padding: 5px 10px; }
+        #status-zone { margin-top: 15px; padding: 10px; border: 1px solid transparent; border-radius: 4px; }
+        .success { color: #155724; background-color: #d4edda; border-color: #c3e6cb;}
+        .error { color: #721c24; background-color: #f8d7da; border-color: #f5c6cb; }
+    </style>
+</head>
+<body>
+    <h1>Admin Panel</h1>
+    <p>Use this page to create new users for the chat application.</p>
+
+    <div id="admin-login-view">
+        <h2>Admin Login</h2>
+        <div>
+            <label for="admin-username">Admin Username:</label>
+            <input type="text" id="admin-username" placeholder="Enter admin username">
+        </div>
+        <div>
+            <label for="admin-password">Admin Password:</label>
+            <input type="password" id="admin-password" placeholder="Enter admin password">
+        </div>
+        <button id="admin-login-btn">Login</button>
+    </div>
+
+    <div id="create-user-view" style="display:none;">
+        <h2>Create New User</h2>
+        <div>
+            <label for="new-username">New User's Username:</label>
+            <input type="text" id="new-username" placeholder="Enter username for new user">
+        </div>
+        <div>
+            <label for="new-password">New User's Password:</label>
+            <input type="password" id="new-password" placeholder="Enter temporary password">
+        </div>
+        <button id="create-user-btn">Create User</button>
+        <button id="admin-logout-btn">Logout</button>
+    </div>
+
+    <div id="status-zone"></div>
+
+<script>
+    const adminLoginView = document.getElementById('admin-login-view');
+    const createUserView = document.getElementById('create-user-view');
+    const statusZone = document.getElementById('status-zone');
+
+    const adminUsernameInput = document.getElementById('admin-username');
+    const adminPasswordInput = document.getElementById('admin-password');
+    const adminLoginBtn = document.getElementById('admin-login-btn');
+    const adminLogoutBtn = document.getElementById('admin-logout-btn');
+
+    const newUsernameInput = document.getElementById('new-username');
+    const newPasswordInput = document.getElementById('new-password');
+    const createUserBtn = document.getElementById('create-user-btn');
+
+    let adminToken = null;
+
+    adminLoginBtn.addEventListener('click', handleAdminLogin);
+    adminLogoutBtn.addEventListener('click', handleAdminLogout);
+    createUserBtn.addEventListener('click', handleCreateUser);
+    
+    async function handleAdminLogin() {
+        setStatus('');
+        const username = adminUsernameInput.value.trim();
+        const password = adminPasswordInput.value.trim();
+        
+        if (!username || !password) {
+            setStatus('Admin username and password are required.', 'error');
+            return;
+        }
+    
+        try {
+            const tempToken = btoa(`${username}:${password}`);
+            const response = await fetch('/api/admin/login', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Basic ${tempToken}`
+                }
+            });
+    
+            const data = await response.json();
+    
+            if (!response.ok) {
+                throw new Error(data.message || 'Login failed. Check credentials.');
+            }
+
+            adminToken = tempToken;
+            adminLoginView.style.display = 'none';
+            createUserView.style.display = 'block';
+            setStatus('Logged in successfully.', 'success');
+    
+        } catch (err) {
+            setStatus(`Login Error: ${err.message}`, 'error');
+            adminToken = null;
+        }
+    }
+
+    function handleAdminLogout() {
+        adminToken = null;
+        adminLoginView.style.display = 'block';
+        createUserView.style.display = 'none';
+        adminUsernameInput.value = '';
+        adminPasswordInput.value = '';
+        setStatus('Logged out.');
+    }
+
+    async function handleCreateUser() {
+        if (!adminToken) {
+            setStatus('Admin is not logged in.', 'error');
+            return;
+        }
+
+        const username = newUsernameInput.value.trim();
+        const password = newPasswordInput.value.trim();
+
+        if (!username || !password) {
+            setStatus('New user\'s username and password are required.', 'error');
+            return;
+        }
+
+        try {
+            const response = await fetch('/api/admin/create_user', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Basic ${adminToken}`
+                },
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.message || 'Failed to create user.');
+            }
+
+            setStatus(`Successfully created user: '${data.user.username}'`, 'success');
+            newUsernameInput.value = '';
+            newPasswordInput.value = '';
+
+        } catch (err) {
+            setStatus(`Error: ${err.message}`, 'error');
+        }
+    }
+
+    function setStatus(message, type = 'info') {
+        statusZone.textContent = message;
+        statusZone.className = 'status-zone';
+        if (type === 'success' || type === 'error') {
+            statusZone.classList.add(type);
+        }
+    }
+</script>
+</body>
+</html>
